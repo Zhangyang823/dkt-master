@@ -1,10 +1,8 @@
-# -*- coding:utf-8 -*-
 import time
 import datetime
 import os
 
 import numpy as np
-
 import tensorflow as tf
 from sklearn.metrics import roc_auc_score, accuracy_score
 
@@ -34,7 +32,7 @@ def gen_metrics(sequence_len, binary_pred, pred, target_correctness):
         preds.append(pred[seq_idx, :seq_len])
         target_correctnesses.append(target_correctness[seq_idx, :seq_len])
 
-    new_binary_pred = np.concatenate(binary_preds) #进行拼接
+    new_binary_pred = np.concatenate(binary_preds)
     new_pred = np.concatenate(preds)
     new_target_correctness = np.concatenate(target_correctnesses)
 
@@ -89,7 +87,6 @@ class DKTEngine(object):
         time_str = datetime.datetime.now().isoformat()
         print("train: {}: step {}, loss {}, acc {}, auc: {}".format(time_str, step, loss, accuracy, auc))
         train_summary_writer.add_summary(summaries, step)
-        tf.summary.scalar("acc",accuracy)
 
     def dev_step(self, params, dev_summary_op, writer=None):
         """
@@ -131,7 +128,7 @@ class DKTEngine(object):
         config = Config()
 
         # 实例化数据生成对象
-        dataGen = DataGenerator(fileName, config)  #return seqs_by_student, list(set(skills))
+        dataGen = DataGenerator(fileName, config)
         dataGen.gen_attr()  # 生成训练集和测试集
 
         train_seqs = dataGen.train_seqs
@@ -142,7 +139,6 @@ class DKTEngine(object):
             log_device_placement=False
         )
         sess = tf.Session(config=session_conf)
-        # sess = tf.Session()
         self.sess = sess
 
         with sess.as_default():
@@ -159,12 +155,11 @@ class DKTEngine(object):
             self.test_dkt = test_dkt
 
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            print("global_step", global_step)
             self.global_step = global_step
 
             # 定义一个优化器
             optimizer = tf.train.AdamOptimizer(config.trainConfig.learning_rate)
-            grads_and_vars = optimizer.compute_gradients(train_dkt.loss)#返回的(gradient, variable)对的列表
+            grads_and_vars = optimizer.compute_gradients(train_dkt.loss)
 
             # 对梯度进行截断，并且加上梯度噪音
             grads_and_vars = [(tf.clip_by_norm(g, config.trainConfig.max_grad_norm), v)
@@ -172,30 +167,27 @@ class DKTEngine(object):
             # grads_and_vars = [(self.add_gradient_noise(g), v) for g, v in grads_and_vars]
 
             # 定义图中最后的节点
-            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step, name="train_op") #Apply gradients to variables
+            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step, name="train_op")
 
             # 保存各种变量或结果的值
             grad_summaries = []
             for g, v in grads_and_vars:
                 if g is not None:
-                    #运行出错地方
-                    print(v)
-                    grad_hist_summary = tf.summary.histogram("{}/grad/hist/tag".format(v.name), g) #直方图
+                    grad_hist_summary = tf.summary.histogram("{}/grad/hist".format(v.name), g)
                     sparsity_summary = tf.summary.scalar("{}/grad/sparsity".format(v.name), tf.nn.zero_fraction(g))
                     grad_summaries.append(grad_hist_summary)
                     grad_summaries.append(sparsity_summary)
             grad_summaries_merged = tf.summary.merge(grad_summaries)
 
-            #timestamp= str(int(time.time()))
-            timestamp = str(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+            timestamp = str(int(time.time()))
             out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
             print("writing to {}".format(out_dir))
 
             # 训练时的 Summaries
-            train_loss_summary = tf.summary.scalar("loss", train_dkt.loss) #生成loss标量图
+            train_loss_summary = tf.summary.scalar("loss", train_dkt.loss)
             train_summary_op = tf.summary.merge([train_loss_summary, grad_summaries_merged])
             train_summary_dir = os.path.join(out_dir, "summaries", "train")
-            train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph) #到tensorboard里看结果
+            train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
             # 测试时的 summaries
             test_loss_summary = tf.summary.scalar("loss", test_dkt.loss)
@@ -206,7 +198,6 @@ class DKTEngine(object):
             saver = tf.train.Saver(tf.global_variables())
 
             sess.run(tf.global_variables_initializer())
-            print("global_step", global_step)
 
             print("初始化完毕，开始训练")
             for i in range(config.trainConfig.epochs):
@@ -215,7 +206,7 @@ class DKTEngine(object):
                     # 批次获得训练集，训练模型
                     self.train_step(params, train_op, train_summary_op, train_summary_writer)
 
-                    current_step = tf.train.global_step(sess, global_step) #经常在滑动平均，学习速率变化的时候需要用到系统会自动更新这个参数的值，从1开始。
+                    current_step = tf.train.global_step(sess, global_step)
                     # train_step.run(feed_dict={x: batch_train[0], y_actual: batch_train[1], keep_prob: 0.5})
                     # 对结果进行记录
                     if current_step % config.trainConfig.evaluate_every == 0:
@@ -226,24 +217,18 @@ class DKTEngine(object):
                         accuracys = []
                         aucs = []
                         for params in dataGen.next_batch(test_seqs, "test"):
-                            #测试
                             loss, accuracy, auc = self.dev_step(params, dev_summary_op, writer=None)
                             losses.append(loss)
                             accuracys.append(accuracy)
                             aucs.append(auc)
 
                         time_str = datetime.datetime.now().isoformat()
-                        #time_str=str(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
                         print("dev: {}, step: {}, loss: {}, acc: {}, auc: {}".
                               format(time_str, current_step, mean(losses), mean(accuracys), mean(aucs)))
-                        file_handle = open('../src/save_my_model/result.txt', mode='w+')
-                        seq=[time_str,current_step, mean(losses), mean(accuracys), mean(aucs)]
-                        strSeq=[str(x)+',' for x in seq]
-                        file_handle.writelines("".join(strSeq))
 
                     # 保存为checkpoint模型文件
                     if current_step % config.trainConfig.checkpoint_every == 0:
-                        path = saver.save(sess, "../src/save_my_model/my_model", global_step=current_step)
+                        path = saver.save(sess, "model/add_loss/my-model", global_step=current_step)
                         print("Saved model checkpoint to {}\n".format(path))
 
             # 保存为pb模型文件
@@ -272,5 +257,4 @@ if __name__ == "__main__":
     fileName = "../data/assistments.txt"
     dktEngine = DKTEngine()
     dktEngine.run_epoch(fileName)
-    #
 
